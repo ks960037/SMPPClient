@@ -41,4 +41,4 @@ const SMPPRecordSchema = new mongoose.Schema({
     timestamps: true,
 });
 
-export const SMSRecord = mongoose.model("SMPPRecord", SMPPRecordSchema);
+export const SMPPRecord = mongoose.model("SMPPRecord", SMPPRecordSchema);
