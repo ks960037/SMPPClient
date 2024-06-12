@@ -11,11 +11,14 @@
   "license": "ISC",
   "type": "module",
   "dependencies": {
+    "@aws-sdk/client-cloudwatch-logs": "^3.592.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
     "mongoose": "^8.4.1",
     "portfinder": "^1.0.32",
-    "smpp": "0.6.0-rc.4"
+    "smpp": "0.6.0-rc.4",
+    "winston": "^3.13.0",
+    "winston-cloudwatch": "^6.3.0"
   }
 }

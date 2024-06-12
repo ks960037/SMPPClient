@@ -3,6 +3,8 @@ import smpp from 'smpp';
 import dotenv from 'dotenv';
 dotenv.config();
 
+import { logger } from "./cloudWatchLogger.js"
+
 // import mongoose from 'mongoose';
 // const Types = mongoose.Schema.Types
 import { SMPPRecord } from '../models/SMPPRocord.js';
@@ -15,7 +17,7 @@ function createSmppSession() {
     const acc = process.env.TELCO_ACC
     const pas = process.env.TELCO_PAS
     return new Promise((resolve, reject) => {
-        console.log("發起 smpp 會話")
+        logger.info("發起 smpp 會話")
         session = smpp.connect({
             url: url,
             auto_enquire_link_period: 10000,
@@ -25,17 +27,17 @@ function createSmppSession() {
 
         // SMSC连接成功时触发
         session.on('connect', () => {
-            console.log('SMSC连接成功');
+            logger.info('SMSC连接成功');
             // 連線後綁定帳號密碼
             session.bind_transceiver({
                 system_id: acc,
                 password: pas
             }, (pdu) => {
                 if (pdu.command_status === 0) {
-                    console.log('绑定成功');
+                    logger.info('绑定成功');
                     resolve();
                 } else {
-                    console.log('绑定失败');
+                    logger.error('绑定失败');
                     removeSmppSession()
                     reject();
                 }
@@ -43,32 +45,32 @@ function createSmppSession() {
         });
 
         session.on('bind_transceiver', () => {
-            console.log("成功綁定到 SMSC 後，可以開始發送短訊");
+            logger.info("成功綁定到 SMSC 後，可以開始發送短訊");
         });
 
         session.on('deliver_sm', onDeliver);
 
         session.on('delivery_receipt', (pdu) => {
-            console.log("處理傳送回執 (DLR)", pdu)
+            logger.info("處理傳送回執 (DLR)", pdu)
         });
 
         session.on('status_report', (pdu) => {
-            console.log("處理狀態回執(SR)", pdu)
+            logger.info("處理狀態回執(SR)", pdu)
         });
 
         // SMSC连接关闭时触发
         session.on('close', () => {
-            console.log('SMSC连接已关闭');
+            logger.info('SMSC连接已关闭');
         });
 
         // SMSC连接错误时触发
         session.on('error', (error) => {
-            console.log('SMSC连接出现错误:', error);
+            logger.info('SMSC连接出现错误:', error);
         });
 
         // 监听SIGINT信号（Ctrl + C）并关闭SMPP连接
         process.on('SIGINT', () => {
-            console.log('接收到 SIGINT 信号，关闭 SMPP 连接');
+            logger.info('接收到 SIGINT 信号，关闭 SMPP 连接');
             removeSmppSession()
         });
     })
@@ -78,7 +80,7 @@ function createSmppSession() {
 let count = 0;
 /** 處理訊息佇列 */
 async function processSMSReqs(SMSReq) {
-    console.log("處理 SMS 請求:", SMSReq)
+    logger.info("處理 SMS 請求:", SMSReq)
 
     const userId = SMSReq.userId;
     const phones = SMSReq.phones;
@@ -99,9 +101,9 @@ async function processSMSReqs(SMSReq) {
 
     // 記錄到資料庫
     const result = await SMPPRecord.insertMany(records);
-    console.log("印出結果", result);
+    logger.info("印出結果", result);
     for (const sms of result) {
-        console.log("開始發送", sms);
+        logger.info("開始發送", sms);
         sendSMS(sms._id, sms.receiver, sms.content)
     }
 
@@ -110,8 +112,8 @@ async function processSMSReqs(SMSReq) {
 
 // 发送短信函数
 function sendSMS(recordId, receiver, content) {
-    // console.log("檢查 sendSMS", recordId, receiver, content)
-    // return
+    console.log("檢查 sendSMS", recordId, receiver, content)
+    return
     const submitSm = {
         //source_addr: '639506584595', // 发送者号码
         destination_addr: receiver, // 接收者号码
@@ -119,9 +121,9 @@ function sendSMS(recordId, receiver, content) {
     };
     // 向 smpp 發送簡訊號碼及內容
     session.submit_sm(submitSm, (pdu) => {
-        console.log("協議數據單元:", pdu);
+        logger.info("協議數據單元:", pdu);
         if (pdu.command_status === 0) {
-            console.log('短信发送成功');
+            logger.info('短信发送成功');
             if (pdu.message_id == "-1") {
                 SMPPRecord.updateOne({
                     _id: recordId
@@ -141,7 +143,7 @@ function sendSMS(recordId, receiver, content) {
                 })
             }
         } else {
-            console.log('短信发送失败');
+            logger.error('短信发送失败');
             // 失敗 -> 更新記錄
             SMPPRecord.updateOne({
                 _id: recordId
@@ -157,7 +159,7 @@ function sendSMS(recordId, receiver, content) {
 // 送出
 const onDeliver = async (pdu) => {
     if (pdu.command === 'deliver_sm') {
-        console.log("收到短訊", pdu)
+        logger.info("收到短訊", pdu)
         // 成功送出 => 更新記錄 (此時使用 message_id 作為標示)
         SMPPRecord.updateOne({
             messageId: pdu.message_id,
@@ -167,7 +169,7 @@ const onDeliver = async (pdu) => {
         })
         count--;
     } else if (pdu.command === 'deliver_sm_resp') {
-        console.log("收到發送短訊的回應", pdu)
+        logger.info("收到發送短訊的回應", pdu)
     }
     // 全部發送成功，關閉連線
     if (count == 0)
@@ -176,7 +178,7 @@ const onDeliver = async (pdu) => {
 
 // 中斷連線並清除 session 單例
 function removeSmppSession() {
-    console.log("中斷 smpp 會話")
+    logger.info("中斷 smpp 會話")
     session.close();
     session = null;
 }
@@ -196,7 +198,7 @@ export async function sendSMSToSmppClient(SMSReq) {
     if (!session) try {
         await createSmppSession()
     } catch (e) {
-        console.error("SMPP 連線失敗", e)
+        logger.error("SMPP 連線失敗", e)
     }
 
     // 連線後處理發送
